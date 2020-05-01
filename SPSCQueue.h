@@ -23,6 +23,7 @@ SOFTWARE.
 */
 
 #pragma once
+#include <intrin.h>
 
 template<class T, uint32_t CNT>
 class SPSCQueue
@@ -32,19 +33,22 @@ public:
 
     T* alloc() {
         if(write_idx - read_idx_cach == CNT) {
-            asm volatile("" : "=m"(read_idx) : : ); // force read memory
+			_mm_mfence();
+           // asm volatile("" : "=m"(read_idx) : : ); // force read memory
             read_idx_cach = read_idx; 
-            if(__builtin_expect(write_idx - read_idx_cach == CNT, 0)) { // no enough space
+            if(/*__builtin_expect*/(write_idx - read_idx_cach == CNT, 0)) { // no enough space
                 return nullptr;
             }
         }
         return &data[write_idx % CNT];
     }
 
-    void push() {
-        asm volatile("" : : "m"(data), "m"(write_idx) :); // memory fence
+    void push() 
+	{
+		_mm_mfence();
+        //asm ("" : : "m"(data), "m"(write_idx) :); // memory fence
         ++write_idx;
-        asm volatile("" : : "m"(write_idx) : ); // force write memory
+        //asm volatile("" : : "m"(write_idx) : ); // force write memory
     }
 
     template<typename Writer>
@@ -57,19 +61,21 @@ public:
     }
 
     T* front() {
-        asm volatile("" : "=m"(write_idx) : : ); // force read memory
+		_mm_mfence();
+        //asm volatile("" : "=m"(write_idx) : : ); // force read memory
         if(read_idx == write_idx) {
             return nullptr;
         }
         T* ret = &data[read_idx % CNT];
-        asm volatile("" : "=m"(data) : :); // memory fence
+       // asm volatile("" : "=m"(data) : :); // memory fence
         return ret;
     }
 
     void pop() {
-        asm volatile("" : "=m"(data) : "m"(read_idx) :); // memory fence
+		_mm_mfence();
+        //asm volatile("" : "=m"(data) : "m"(read_idx) :); // memory fence
         ++read_idx;
-        asm volatile("" : : "m"(read_idx) : ); // force write memory
+        //asm volatile("" : : "m"(read_idx) : ); // force write memory
     }
 
     template<typename Reader>
@@ -82,9 +88,9 @@ public:
     }
 
   private:
-    alignas(64) T data[CNT];
-    alignas(64) uint32_t write_idx = 0;
+	alignas(64) T data[CNT];
+	alignas(64) uint32_t write_idx = 0;
     uint32_t read_idx_cach = 0; // used only by writing thread
-    alignas(64) uint32_t read_idx = 0;
+	alignas(64) uint32_t read_idx = 0;
 };
 
